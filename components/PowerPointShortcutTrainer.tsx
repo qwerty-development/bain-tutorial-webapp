@@ -6,13 +6,21 @@ import ShortcutMenu from './games/ShortcutMenu';
 import ShortcutGameWrapper from './games/ShortcutGameWrapper';
 import { detectOS } from '@/utils/detectOS';
 
-type View = 'menu' | 'game';
+type View = 'menu' | 'config' | 'game';
+type Difficulty = 'easy' | 'normal' | 'hard';
+
+interface TestConfig {
+  count: number;
+  difficulty: Difficulty;
+}
+
 type Command = 'group' | 'duplicate' | 'alignTop' | 'distributeHorizontally' | 'alignTopFirst' | 'swapPositions' | 'groupSimilar' | null;
 
 const PowerPointShortcutTrainer: React.FC = () => {
   const [view, setView] = useState<View>('menu');
   const [command, setCommand] = useState<Command>(null);
   const [randomMode, setRandomMode] = useState<boolean>(false);
+  const [testConfig, setTestConfig] = useState<TestConfig>({ count: 5, difficulty: 'normal' });
   const [os, setOs] = useState<'mac' | 'windows'>('windows');
 
   useEffect(() => {
@@ -25,7 +33,8 @@ const PowerPointShortcutTrainer: React.FC = () => {
     setView('game');
   };
 
-  const handleRandom = () => {
+  const handleRandom = (cfg: TestConfig) => {
+    setTestConfig(cfg);
     setRandomMode(true);
     setCommand(null);
     setView('game');
@@ -38,7 +47,7 @@ const PowerPointShortcutTrainer: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+    <div className="min-h-screen bg-white">
       {view === 'menu' ? (
         <ShortcutMenu
           onSelect={handleSelect}
@@ -49,6 +58,7 @@ const PowerPointShortcutTrainer: React.FC = () => {
         <ShortcutGameWrapper
           command={command}
           isRandomMode={randomMode}
+          testConfig={testConfig}
           os={os}
           onBack={handleBack}
         />

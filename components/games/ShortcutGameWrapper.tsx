@@ -5,6 +5,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import GroupShortcut from './GroupShortcut';
 import DuplicateShortcut from './DuplicateShortcut';
 import AlignTopShortcut from './AlignTopShortcut';
+import AlignTopFirstShortcut from './AlignTopFirstShortcut';
+import GroupSimilarShortcut from './GroupSimilarShortcut';
 import DistributeHorizontallyShortcut from './DistributeHorizontallyShortcut';
 import SwapPositionsShortcut from './SwapPositionsShortcut';
 import { shortcuts } from '@/utils/shortcut';
@@ -15,6 +17,10 @@ export type GameCommand = 'group' | 'duplicate' | 'alignTop' | 'distributeHorizo
 interface ShortcutGameWrapperProps {
   command: GameCommand | null;
   isRandomMode: boolean;
+  testConfig: {
+    count: number;
+    difficulty: 'easy' | 'normal' | 'hard';
+  };
   os: 'mac' | 'windows';
   onBack: () => void;
 }
@@ -29,8 +35,10 @@ const shuffle = <T,>(arr: T[]): T[] => {
   return a;
 };
 
-const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRandomMode, os, onBack }) => {
-  const allCommands: GameCommand[] = ['group', 'duplicate', 'alignTop', 'distributeHorizontally', 'swapPositions'];
+const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRandomMode, testConfig, os, onBack }) => {
+  const allCommands: GameCommand[] = ['group', 'duplicate', 'alignTop', 'alignTopFirst', 'distributeHorizontally', 'swapPositions', 'groupSimilar'];
+  const difficultyTime: Record<'easy' | 'normal' | 'hard', number> = { easy: 8, normal: 5, hard: 3 };
+  const timeLimit = difficultyTime[testConfig.difficulty];
   const [randomCommands, setRandomCommands] = useState<GameCommand[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(isRandomMode ? 3 : null);
@@ -38,23 +46,26 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
   const [times, setTimes] = useState<number[]>([]);
   const [timeouts, setTimeouts] = useState<boolean[]>([]);
   const [showSummary, setShowSummary] = useState(false);
-  const [score, setScore] = useState(5); // Start with 5 points
+  const [score, setScore] = useState(0); // will init later
+  const [total, setTotal] = useState(1);
   const startTimeRef = useRef<number>(0);
 
   // Init random sequence on mode switch
   useEffect(() => {
     if (isRandomMode) {
-      const seq = shuffle(allCommands);
+      const seq = shuffle(allCommands).slice(0, Math.max(2, Math.min(testConfig.count, allCommands.length)));
       setRandomCommands(seq);
       setCurrentIdx(0);
       setTimes([]);
       setTimeouts([]);
-      setScore(5); // Reset to 5 points
+      setScore(seq.length); // full score
+      setTotal(seq.length);
       setShowSummary(false);
       setCountdown(3);
       setStarted(false);
     } else {
-      setScore(1); // Single mode starts with 1 point
+      setScore(1);
+      setTotal(1);
     }
   }, [isRandomMode]);
 
@@ -119,7 +130,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
   // Render countdown
   if (isRandomMode && !started) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white">
+      <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="text-center">
           <div className="text-8xl font-bold animate-pulse text-blue-900 mb-4">
             {countdown}
@@ -128,7 +139,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
             Get ready for: <strong className="text-blue-900">{shortcuts[randomCommands[currentIdx]]?.name}</strong>
           </p>
           <div className="mt-4 text-sm text-gray-500">
-            Challenge {currentIdx + 1} of {randomCommands.length} • Score: {score}/5
+            Challenge {currentIdx + 1} of {randomCommands.length} • Score: {score}/{total}
           </div>
         </div>
       </div>
@@ -140,6 +151,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
     const completedCount = timeouts.filter(t => !t).length;
     const timedOutCount = timeouts.filter(t => t).length;
     const avgTime = completedCount > 0 ? times.filter((_, i) => !timeouts[i]).reduce((a, b) => a + b, 0) / completedCount : 0;
+    const percentage = Math.round((score / total) * 100);
 
     const getScoreColor = (score: number) => {
       if (score >= 4) return 'text-green-600';
@@ -155,7 +167,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
     };
 
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8">
+      <div className="flex items-center justify-center min-h-screen bg-white p-8">
         <div className="bg-white rounded-xl p-8 shadow-xl text-center border-l-4 border-blue-900 max-w-md w-full">
           <div className="mb-6">
             <Trophy className={`w-16 h-16 mx-auto mb-4 ${getScoreColor(score)}`} />
@@ -167,7 +179,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
           
           <div className="mb-6">
             <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>
-              {score}/5
+              {score}/{total}
             </div>
             <div className="flex justify-center">
               {[...Array(5)].map((_, i) => (
@@ -234,28 +246,32 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
   const getGameComponent = () => {
     switch (activeCmd) {
       case 'group':
-        return <GroupShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+        return <GroupShortcut isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
       case 'duplicate':
-        return <DuplicateShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+        return <DuplicateShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
       case 'alignTop':
-        return <AlignTopShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+        return <AlignTopShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
       case 'distributeHorizontally':
-        return <DistributeHorizontallyShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+        return <DistributeHorizontallyShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
       case 'swapPositions':
-        return <SwapPositionsShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+        return <SwapPositionsShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'alignTopFirst':
+        return <AlignTopFirstShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'groupSimilar':
+        return <GroupSimilarShortcut timeLimit={timeLimit} isRandomMode={isRandomMode} onComplete={handleComplete} onTimeout={handleTimeout} />;
       default:
         return <div>Game not implemented yet</div>;
     }
   };
 
   return (
-    <div className="min-h-screen relative bg-gradient-to-br from-blue-50 to-white">
+    <div className="min-h-screen relative bg-white">
       <div className="absolute top-6 left-6 flex items-center gap-4">
         <button
           onClick={onBack}
-          className="inline-flex items-center px-4 py-2 bg-white text-blue-900 rounded-lg shadow hover:shadow-md border border-blue-100 transition-all"
+          className="z-20 inline-flex items-center px-4 py-2 bg-brand-red hover:bg-brand-red/90 text-white rounded-lg shadow-lg transition-all"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Menu
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </button>
         
         {isRandomMode && (
@@ -269,7 +285,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
               <div className="flex items-center">
                 <Star className="w-4 h-4 mr-2 text-yellow-400 fill-current" />
                 <span className="text-sm text-blue-900 font-medium">
-                  Score: {score}/5
+                  Score: {score}/{total}
                 </span>
               </div>
             </div>
@@ -281,7 +297,7 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
             <div className="flex items-center">
               <Star className="w-4 h-4 mr-2 text-yellow-400 fill-current" />
               <span className="text-sm text-blue-900 font-medium">
-                Score: {score}/1
+                Score: {score}/{total}
               </span>
             </div>
           </div>

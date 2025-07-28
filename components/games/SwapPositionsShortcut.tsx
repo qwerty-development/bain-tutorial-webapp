@@ -13,6 +13,8 @@ interface Position {
 interface SwapPositionsShortcutProps { 
   onComplete?: () => void;
   onTimeout?: () => void;
+  isRandomMode?: boolean;
+  timeLimit?: number;
 }
 
 // Key mapping for Mac special characters
@@ -29,14 +31,14 @@ const macKeyMap: Record<string, string> = {
   '©': 'g',  // Alt + G
 };
 
-const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplete, onTimeout }) => {
+const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [swapped, setSwapped] = useState<boolean>(false);
   const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [completionTime, setCompletionTime] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(5);
+  const [timeLeft, setTimeLeft] = useState<number>(isRandomMode ? timeLimit : 0);
   const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -53,8 +55,9 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
     setStartTime(Date.now());
   }, []);
 
-  // Timer countdown - starts immediately
+  // Timer countdown - only in random mode
   useEffect(() => {
+    if (!isRandomMode) return;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -68,14 +71,15 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [isRandomMode, timeLimit]);
 
   // Handle timeout separately
   useEffect(() => {
+    if (!isRandomMode) return;
     if (timeLeft === 0 && !completed) {
       onTimeout?.();
     }
-  }, [timeLeft, completed, onTimeout]);
+  }, [timeLeft, completed, onTimeout, isRandomMode]);
 
   const normalizeKey = (key: string, altPressed: boolean): string => {
     // If Alt is pressed and we get a regular letter, use it directly
@@ -115,14 +119,18 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
         const end = Date.now();
         setCompletionTime(end - (startTime || end));
         if (timerRef.current) clearInterval(timerRef.current);
-        setTimeout(() => setCompleted(true), 800);
+        if (isRandomMode) {
+          setTimeout(() => onComplete?.(), 800);
+        } else {
+          setTimeout(() => setCompleted(true), 800);
+        }
       }
     } else if (!e.altKey) {
       setSequence([]);
     }
     
     e.preventDefault();
-  }, [completed, startTime, sequence]);
+  }, [completed, startTime, sequence, onComplete, isRandomMode]);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
     if (completed) return;
@@ -140,17 +148,19 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  if (completed) {
+  if (completed && !isRandomMode) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8 relative">
+      <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
         <div className="bg-white rounded-xl p-6 shadow-lg text-center border-l-4 border-blue-900 z-10">
           <CheckCircle className="w-12 h-12 mx-auto text-blue-900 mb-4" />
           <h2 className="text-2xl font-bold text-blue-900 mb-2">
             Smooth Swap! 🔄
           </h2>
-          <p className="text-gray-600 font-mono mb-4">
-            Completed in {(completionTime / 1000).toFixed(2)}s
-          </p>
+          {!isRandomMode && (
+            <p className="text-gray-600 font-mono mb-4">
+              Completed in {(completionTime / 1000).toFixed(2)}s
+            </p>
+          )}
           <button
             onClick={() => onComplete?.()}
             className="px-6 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-lg transition-colors"
@@ -168,24 +178,28 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
   ];
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8 relative">
+    <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
       {/* Big Background Timer */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className={`text-[20rem] font-bold opacity-10 transition-all duration-300 ${
-          timeLeft <= 2 ? 'text-red-500 animate-pulse' : 'text-blue-900'
-        }`}>
-          {timeLeft}
+      {isRandomMode && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className={`text-[20rem] font-bold opacity-10 transition-all duration-300 ${
+            timeLeft <= 2 ? 'text-red-500 animate-pulse' : 'text-blue-900'
+          }`}>
+            {timeLeft}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-blue-900 z-10 relative">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-blue-900">
             Swap Positions
           </h2>
-          <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
-            {timeLeft}s
-          </div>
+          {isRandomMode && (
+            <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
+              {timeLeft}s
+            </div>
+          )}
         </div>
         
         <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200">
