@@ -4,13 +4,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import GroupShortcut from './GroupShortcut';
 import DuplicateShortcut from './DuplicateShortcut';
+import AlignTopShortcut from './AlignTopShortcut';
+import DistributeHorizontallyShortcut from './DistributeHorizontallyShortcut';
+import SwapPositionsShortcut from './SwapPositionsShortcut';
 import { shortcuts } from '@/utils/shortcut';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X, Trophy, Star } from 'lucide-react';
 
-export type GameCommand = 'group' | 'duplicate';
+export type GameCommand = 'group' | 'duplicate' | 'alignTop' | 'distributeHorizontally' | 'alignTopFirst' | 'swapPositions' | 'groupSimilar';
 
 interface ShortcutGameWrapperProps {
-  command: GameCommand | null; // used in single-mode
+  command: GameCommand | null;
   isRandomMode: boolean;
   os: 'mac' | 'windows';
   onBack: () => void;
@@ -27,13 +30,15 @@ const shuffle = <T,>(arr: T[]): T[] => {
 };
 
 const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRandomMode, os, onBack }) => {
-  const allCommands: GameCommand[] = ['group', 'duplicate'];
+  const allCommands: GameCommand[] = ['group', 'duplicate', 'alignTop', 'distributeHorizontally', 'swapPositions'];
   const [randomCommands, setRandomCommands] = useState<GameCommand[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(isRandomMode ? 3 : null);
   const [started, setStarted] = useState(!isRandomMode);
   const [times, setTimes] = useState<number[]>([]);
+  const [timeouts, setTimeouts] = useState<boolean[]>([]);
   const [showSummary, setShowSummary] = useState(false);
+  const [score, setScore] = useState(5); // Start with 5 points
   const startTimeRef = useRef<number>(0);
 
   // Init random sequence on mode switch
@@ -43,9 +48,13 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
       setRandomCommands(seq);
       setCurrentIdx(0);
       setTimes([]);
+      setTimeouts([]);
+      setScore(5); // Reset to 5 points
       setShowSummary(false);
       setCountdown(3);
       setStarted(false);
+    } else {
+      setScore(1); // Single mode starts with 1 point
     }
   }, [isRandomMode]);
 
@@ -60,25 +69,44 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
       setCountdown(null);
       setStarted(true);
       startTimeRef.current = Date.now();
+    } else if (!isRandomMode) {
+      setStarted(true);
     }
   }, [countdown, isRandomMode]);
 
   const handleComplete = () => {
     const elapsed = Date.now() - startTimeRef.current;
     setTimes(prev => [...prev, elapsed]);
+    setTimeouts(prev => [...prev, false]);
+    // No score deduction for completion
 
     // Next game or summary
     if (isRandomMode) {
       if (currentIdx < randomCommands.length - 1) {
         setCurrentIdx(i => i + 1);
-        // start next
         startTimeRef.current = Date.now();
       } else {
-        // finished all
         setShowSummary(true);
       }
     } else {
-      // single mode: just go back
+      onBack();
+    }
+  };
+
+  const handleTimeout = () => {
+    setTimes(prev => [...prev, 5000]); // 5 seconds
+    setTimeouts(prev => [...prev, true]);
+    setScore(prev => Math.max(0, prev - 1)); // Lose 1 point, minimum 0
+
+    // Next game or summary
+    if (isRandomMode) {
+      if (currentIdx < randomCommands.length - 1) {
+        setCurrentIdx(i => i + 1);
+        startTimeRef.current = Date.now();
+      } else {
+        setShowSummary(true);
+      }
+    } else {
       onBack();
     }
   };
@@ -88,38 +116,112 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
     ? randomCommands[currentIdx]
     : command;
 
-  // Render countdown or summary
+  // Render countdown
   if (isRandomMode && !started) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white">
         <div className="text-center">
-          <div className="text-8xl font-bold animate-pulse">
+          <div className="text-8xl font-bold animate-pulse text-blue-900 mb-4">
             {countdown}
           </div>
-          <p className="text-xl mt-2">
-            Get ready for: <strong>{shortcuts[randomCommands[currentIdx]]?.name}</strong>
+          <p className="text-xl text-gray-600">
+            Get ready for: <strong className="text-blue-900">{shortcuts[randomCommands[currentIdx]]?.name}</strong>
           </p>
+          <div className="mt-4 text-sm text-gray-500">
+            Challenge {currentIdx + 1} of {randomCommands.length} • Score: {score}/5
+          </div>
         </div>
       </div>
     );
   }
 
+  // Render summary
   if (showSummary) {
-    const total = times.reduce((a, b) => a + b, 0);
+    const completedCount = timeouts.filter(t => !t).length;
+    const timedOutCount = timeouts.filter(t => t).length;
+    const avgTime = completedCount > 0 ? times.filter((_, i) => !timeouts[i]).reduce((a, b) => a + b, 0) / completedCount : 0;
+
+    const getScoreColor = (score: number) => {
+      if (score >= 4) return 'text-green-600';
+      if (score >= 2) return 'text-yellow-600';
+      return 'text-red-600';
+    };
+
+    const getScoreMessage = (score: number) => {
+      if (score === 5) return 'Perfect Score! 🏆';
+      if (score >= 4) return 'Excellent Work! 🌟';
+      if (score >= 2) return 'Good Effort! 👍';
+      return 'Keep Practicing! 💪';
+    };
+
     return (
-      <div className="flex items-center justify-center min-h-screen p-8">
-        <div className="bg-green-50 dark:bg-green-900 rounded-xl p-6 shadow-lg text-center">
-          <h2 className="text-3xl font-bold mb-4">🎉 All Done!</h2>
-          <p className="mb-2">Your total time:</p>
-          <p className="text-2xl font-mono mb-4">{(total / 1000).toFixed(2)}s</p>
-          {times.map((t, i) => (
-            <p key={i} className="text-sm">
-              {i + 1}. {shortcuts[randomCommands[i]].name}: {(t / 1000).toFixed(2)}s
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8">
+        <div className="bg-white rounded-xl p-8 shadow-xl text-center border-l-4 border-blue-900 max-w-md w-full">
+          <div className="mb-6">
+            <Trophy className={`w-16 h-16 mx-auto mb-4 ${getScoreColor(score)}`} />
+            <h2 className="text-3xl font-bold mb-2 text-blue-900">Test Complete!</h2>
+            <p className={`text-lg font-semibold ${getScoreColor(score)}`}>
+              {getScoreMessage(score)}
             </p>
-          ))}
+          </div>
+          
+          <div className="mb-6">
+            <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>
+              {score}/5
+            </div>
+            <div className="flex justify-center">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  className={`w-6 h-6 mx-1 ${
+                    i < score 
+                      ? 'text-yellow-400 fill-current' 
+                      : 'text-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{completedCount}</div>
+              <div className="text-sm text-green-600">Completed</div>
+            </div>
+            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+              <div className="text-2xl font-bold text-red-700">{timedOutCount}</div>
+              <div className="text-sm text-red-600">Timed Out</div>
+            </div>
+          </div>
+
+          {completedCount > 0 && (
+            <div className="mb-6">
+              <p className="text-lg font-semibold text-blue-900 mb-2">Average Time</p>
+              <p className="text-3xl font-mono text-blue-700">{(avgTime / 1000).toFixed(2)}s</p>
+            </div>
+          )}
+
+          <div className="space-y-2 mb-6 text-left">
+            {times.map((t, i) => (
+              <div key={i} className={`flex justify-between p-2 rounded text-sm ${timeouts[i] ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                <span>{shortcuts[randomCommands[i]].name}</span>
+                <span className="font-mono">
+                  {timeouts[i] ? (
+                    <span className="flex items-center">
+                      <X className="w-3 h-3 mr-1" />
+                      Time Out (-1)
+                    </span>
+                  ) : (
+                    `${(t / 1000).toFixed(2)}s`
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+
           <button
             onClick={onBack}
-            className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-8 py-3 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors font-semibold"
           >
             Back to Menu
           </button>
@@ -129,18 +231,64 @@ const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRa
   }
 
   // Render game view
-  const GameComponent = activeCmd === 'group' ? GroupShortcut : DuplicateShortcut;
+  const getGameComponent = () => {
+    switch (activeCmd) {
+      case 'group':
+        return <GroupShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'duplicate':
+        return <DuplicateShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'alignTop':
+        return <AlignTopShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'distributeHorizontally':
+        return <DistributeHorizontallyShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+      case 'swapPositions':
+        return <SwapPositionsShortcut onComplete={handleComplete} onTimeout={handleTimeout} />;
+      default:
+        return <div>Game not implemented yet</div>;
+    }
+  };
+
   return (
-    <div className="min-h-screen relative">
-      <button
-        onClick={onBack}
-        className="absolute top-6 left-6 inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg shadow hover:shadow-md"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" /> Back to Menu
-      </button>
-      {activeCmd && (
-        <GameComponent onComplete={handleComplete} />
-      )}
+    <div className="min-h-screen relative bg-gradient-to-br from-blue-50 to-white">
+      <div className="absolute top-6 left-6 flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center px-4 py-2 bg-white text-blue-900 rounded-lg shadow hover:shadow-md border border-blue-100 transition-all"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Menu
+        </button>
+        
+        {isRandomMode && (
+          <>
+            <div className="bg-white px-4 py-2 rounded-lg shadow border border-blue-100">
+              <span className="text-sm text-blue-900 font-medium">
+                Challenge {currentIdx + 1} of {randomCommands.length}
+              </span>
+            </div>
+            <div className="bg-white px-4 py-2 rounded-lg shadow border border-blue-100">
+              <div className="flex items-center">
+                <Star className="w-4 h-4 mr-2 text-yellow-400 fill-current" />
+                <span className="text-sm text-blue-900 font-medium">
+                  Score: {score}/5
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+        
+        {!isRandomMode && (
+          <div className="bg-white px-4 py-2 rounded-lg shadow border border-blue-100">
+            <div className="flex items-center">
+              <Star className="w-4 h-4 mr-2 text-yellow-400 fill-current" />
+              <span className="text-sm text-blue-900 font-medium">
+                Score: {score}/1
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {activeCmd && getGameComponent()}
     </div>
   );
 };

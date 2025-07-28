@@ -1,43 +1,55 @@
-// File: src/components/GroupShortcut.tsx
+// File: src/components/games/DistributeHorizontallyShortcut.tsx
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
 
-interface Position {
-  x: number;
-  y: number;
+interface Position { 
+  x: number; 
+  y: number; 
 }
 
-interface GroupShortcutProps {
+interface DistributeHorizontallyShortcutProps { 
   onComplete?: () => void;
   onTimeout?: () => void;
 }
 
 // Key mapping for Mac special characters
 const macKeyMap: Record<string, string> = {
+  '≈': 'x',  // Alt + X
+  'å': 'a',  // Alt + A  
+  '†': 't',  // Alt + T
+  '∂': 'd',  // Alt + D
+  '˙': 'h',  // Alt + H
+  'π': 'p',  // Alt + P
+  'ß': 's',  // Alt + S
+  '∑': 'w',  // Alt + W
+  '∫': 'b',  // Alt + B
   '©': 'g',  // Alt + G
 };
 
-const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) => {
+const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutProps> = ({ onComplete, onTimeout }) => {
   const [positions, setPositions] = useState<Position[]>([]);
-  const [grouped, setGrouped] = useState<boolean>(false);
+  const [distributed, setDistributed] = useState<boolean>(false);
   const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [completionTime, setCompletionTime] = useState<number | null>(null);
+  const [completionTime, setCompletionTime] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(5);
+  const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
-  // Scatter boxes on mount and start timer immediately
+  // Initialize clustered positions and start timer immediately
   useEffect(() => {
-    const initial = Array.from({ length: 5 }, () => ({
-      x: Math.random() * 180 + 20,
-      y: Math.random() * 180 + 20,
-    }));
+    const baseY = 120;
+    const initial = [
+      { x: 30, y: baseY },
+      { x: 50, y: baseY - 10 },
+      { x: 70, y: baseY + 15 },
+      { x: 200, y: baseY - 5 },
+    ];
     setPositions(initial);
     
     // Start timer immediately
@@ -68,37 +80,56 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
     }
   }, [timeLeft, completed, onTimeout]);
 
-  const normalizeKey = (key: string): string => {
+  const normalizeKey = (key: string, altPressed: boolean): string => {
+    // If Alt is pressed and we get a regular letter, use it directly
+    if (altPressed && /^[a-zA-Z]$/.test(key)) {
+      return key.toLowerCase();
+    }
+    // Otherwise check for Mac special characters
     if (macKeyMap[key]) {
       return macKeyMap[key];
     }
     return key.toLowerCase();
   };
 
-  // Key handling for grouping
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (completed) return;
-
-    const normalizedKey = normalizeKey(e.key);
+    
+    const normalizedKey = normalizeKey(e.key, e.altKey);
     const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
 
-    setPressedKeys(prev => (prev.includes(mappedKey) ? prev : [...prev, mappedKey]));
+    setPressedKeys(prev => prev.includes(mappedKey) ? prev : [...prev, mappedKey]);
 
-    const ctrl = isMac ? e.metaKey : e.ctrlKey;
-    if (!done.current && ctrl && e.altKey && normalizedKey === 'g') {
-      done.current = true;
-      setGrouped(true);
-      const end = Date.now();
-      setCompletionTime(end - (startTime || end));
-      if (timerRef.current) clearInterval(timerRef.current);
-      setTimeout(() => setCompleted(true), 500);
+    // Debug logging
+    console.log('Key pressed:', e.key, 'Normalized:', normalizedKey, 'Alt pressed:', e.altKey, 'Sequence:', sequence);
+
+    // Track sequence for Alt + X + D + H
+    if (e.altKey && normalizedKey === 'x') {
+      setSequence(['x']);
+      console.log('Started sequence with X');
+    } else if (e.altKey && sequence.length === 1 && sequence[0] === 'x' && normalizedKey === 'd') {
+      setSequence(['x', 'd']);
+      console.log('Added D to sequence');
+    } else if (e.altKey && sequence.length === 2 && sequence[1] === 'd' && normalizedKey === 'h') {
+      console.log('Completed sequence with H');
+      if (!done.current) {
+        done.current = true;
+        setDistributed(true);
+        const end = Date.now();
+        setCompletionTime(end - (startTime || end));
+        if (timerRef.current) clearInterval(timerRef.current);
+        setTimeout(() => setCompleted(true), 500);
+      }
+    } else if (!e.altKey) {
+      setSequence([]);
     }
+    
     e.preventDefault();
-  }, [completed, startTime, isMac]);
+  }, [completed, startTime, sequence]);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
     if (completed) return;
-    const normalizedKey = normalizeKey(e.key);
+    const normalizedKey = normalizeKey(e.key, e.altKey);
     const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
     setPressedKeys(prev => prev.filter(k => k !== mappedKey));
   }, [completed]);
@@ -112,20 +143,17 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  // Show congratulations when done
   if (completed) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8 relative">
         <div className="bg-white rounded-xl p-6 shadow-lg text-center border-l-4 border-blue-900 z-10">
           <CheckCircle className="w-12 h-12 mx-auto text-blue-900 mb-4" />
           <h2 className="text-2xl font-bold text-blue-900 mb-2">
-            Perfect Grouping! 🎯
+            Perfect Distribution! 📐
           </h2>
-          {completionTime !== null && (
-            <p className="text-gray-600 font-mono mb-4">
-              Completed in {(completionTime / 1000).toFixed(2)}s
-            </p>
-          )}
+          <p className="text-gray-600 font-mono mb-4">
+            Completed in {(completionTime / 1000).toFixed(2)}s
+          </p>
           <button
             onClick={() => onComplete?.()}
             className="px-6 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-lg transition-colors"
@@ -137,7 +165,6 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
     );
   }
 
-  // Default challenge UI
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white p-8 relative">
       {/* Big Background Timer */}
@@ -152,7 +179,7 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
       <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-blue-900 z-10 relative">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-blue-900">
-            Group Objects
+            Distribute Horizontally
           </h2>
           <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
             {timeLeft}s
@@ -160,22 +187,41 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
         </div>
         
         <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200">
+          {/* Guide lines */}
+          {distributed && (
+            <>
+              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
+              <div className="absolute left-20 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
+              <div className="absolute left-32 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
+              <div className="absolute right-8 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
+            </>
+          )}
+          
           {positions.map((pos, i) => {
-            const target = grouped ? { x: 100, y: 100 } : { x: pos.x, y: pos.y };
+            const distributedPositions = [
+              { x: 20, y: 120 },
+              { x: 75, y: 120 },
+              { x: 130, y: 120 },
+              { x: 185, y: 120 }
+            ];
+            const target = distributed ? distributedPositions[i] : { x: pos.x, y: pos.y };
+            
             return (
               <motion.div
                 key={i}
-                className="absolute w-12 h-12 bg-blue-900 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm"
+                className="absolute w-10 h-10 bg-blue-900 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm"
                 initial={{ x: pos.x, y: pos.y }}
                 animate={{ x: target.x, y: target.y }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              />
+                transition={{ type: 'spring', stiffness: 300, damping: 25, delay: i * 0.1 }}
+              >
+                {i + 1}
+              </motion.div>
             );
           })}
         </div>
         
         <p className="mt-4 text-center text-gray-600">
-          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">{isMac ? '⌘ + ⌥ + G' : 'Ctrl + Alt + G'}</span> to group
+          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + X + D + H</span> to distribute evenly
         </p>
         
         <div className="flex flex-wrap justify-center gap-2 mt-4">
@@ -184,13 +230,21 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout }) 
               key={idx}
               className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200"
             >
-              {k === 'cmd' ? '⌘' : k === 'alt' ? (isMac ? '⌥' : 'Alt') : k.toUpperCase()}
+              {k === 'alt' ? 'Alt' : k.toUpperCase()}
             </span>
           ))}
         </div>
+        
+        {sequence.length > 0 && (
+          <div className="mt-2 text-center">
+            <span className="text-sm text-blue-600">
+              Sequence: {sequence.join(' → ')} {sequence.length < 3 && '→ ?'}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-export default GroupShortcut;
+export default DistributeHorizontallyShortcut;

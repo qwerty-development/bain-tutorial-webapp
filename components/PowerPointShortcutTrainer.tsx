@@ -7,7 +7,7 @@ import ShortcutGameWrapper from './games/ShortcutGameWrapper';
 import { detectOS } from '@/utils/detectOS';
 
 type View = 'menu' | 'game';
-type Command = 'group' | 'duplicate' | null;
+type Command = 'group' | 'duplicate' | 'alignTop' | 'distributeHorizontally' | 'alignTopFirst' | 'swapPositions' | 'groupSimilar' | null;
 
 const PowerPointShortcutTrainer: React.FC = () => {
   const [view, setView] = useState<View>('menu');
@@ -38,7 +38,7 @@ const PowerPointShortcutTrainer: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
       {view === 'menu' ? (
         <ShortcutMenu
           onSelect={handleSelect}
