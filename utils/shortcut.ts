@@ -111,7 +111,9 @@ export function useSequentialShortcut(
   const [completed, setCompleted] = useState(false);
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [pressedKeys, setPressedKeys] = useState<string[]>([]);
+  const [altPressed, setAltPressed] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
   // Reset state
   const reset = useCallback(() => {
@@ -120,6 +122,7 @@ export function useSequentialShortcut(
     setCompleted(false);
     setCurrentKey(null);
     setPressedKeys([]);
+    setAltPressed(false);
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
@@ -127,44 +130,109 @@ export function useSequentialShortcut(
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (completed) return;
+      
       const key = e.key.toLowerCase();
-      // Always start with alt
-      if (progress === 0 && key !== 'alt') {
-        setError(true);
-        setProgress(0);
-        setPressedKeys([]);
-        setCurrentKey(null);
-        if (timerRef.current) clearTimeout(timerRef.current);
+      const ctrl = isMac ? e.metaKey : e.ctrlKey;
+      const alt = e.altKey;
+      
+      // Track Alt key state
+      if (key === 'alt') {
+        setAltPressed(alt);
+        if (alt) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+      
+      // Handle Ctrl+D type shortcuts (simultaneous press)
+      if (sequence.length === 2 && sequence[0] === 'ctrl' && sequence[1] === 'd') {
+        if (ctrl && key === 'd') {
+          setCompleted(true);
+          setProgress(2);
+          setPressedKeys(['ctrl', 'd']);
+          e.preventDefault();
+          return;
+        }
         return;
       }
-      // Check if key matches expected
-      if (key === sequence[progress]) {
-        setProgress((p) => p + 1);
-        setError(false);
-        setCurrentKey(key);
-        setPressedKeys((prev) => [...prev, key]);
-        if (timerRef.current) clearTimeout(timerRef.current);
-        // If completed
-        if (progress + 1 === sequence.length) {
+      
+      // Handle Ctrl+G type shortcuts (simultaneous press)
+      if (sequence.length === 2 && sequence[0] === 'ctrl' && sequence[1] === 'g') {
+        if (ctrl && key === 'g') {
           setCompleted(true);
-        } else {
+          setProgress(2);
+          setPressedKeys(['ctrl', 'g']);
+          e.preventDefault();
+          return;
+        }
+        return;
+      }
+      
+      // Handle sequential shortcuts (Alt + X + A + T, etc.)
+      if (sequence.length > 2) {
+        // Start sequence with Alt
+        if (progress === 0 && key === 'alt' && alt) {
+          setProgress(1);
+          setError(false);
+          setCurrentKey(key);
+          setPressedKeys([key]);
+          setAltPressed(true);
+          e.preventDefault();
+          e.stopPropagation();
+          
           // Set timeout for next key
+          if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
             setError(true);
             setProgress(0);
             setPressedKeys([]);
             setCurrentKey(null);
+            setAltPressed(false);
           }, timeoutMs);
+          return;
         }
-      } else {
-        setError(true);
-        setProgress(0);
-        setPressedKeys([]);
-        setCurrentKey(null);
-        if (timerRef.current) clearTimeout(timerRef.current);
+        
+        // Continue sequence after Alt (X, A, T, etc.)
+        if (progress > 0 && key === sequence[progress]) {
+          setProgress(progress + 1);
+          setError(false);
+          setCurrentKey(key);
+          setPressedKeys(prev => [...prev, key]);
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // If completed
+          if (progress + 1 === sequence.length) {
+            setCompleted(true);
+            if (timerRef.current) clearTimeout(timerRef.current);
+          } else {
+            // Set timeout for next key
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => {
+              setError(true);
+              setProgress(0);
+              setPressedKeys([]);
+              setCurrentKey(null);
+              setAltPressed(false);
+            }, timeoutMs);
+          }
+          return;
+        }
+        
+        // Wrong key in sequence
+        if (progress > 0 && key !== sequence[progress]) {
+          setError(true);
+          setProgress(0);
+          setPressedKeys([]);
+          setCurrentKey(null);
+          setAltPressed(false);
+          if (timerRef.current) clearTimeout(timerRef.current);
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
     },
-    [progress, sequence, completed, timeoutMs]
+    [progress, sequence, completed, timeoutMs, isMac]
   );
 
   // Cleanup timer on unmount

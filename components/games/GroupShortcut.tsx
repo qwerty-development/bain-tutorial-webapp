@@ -1,9 +1,10 @@
 // File: src/components/GroupShortcut.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, MousePointer } from 'lucide-react';
+import { useSequentialShortcut } from '@/utils/shortcut';
 
 interface Position {
   x: number;
@@ -24,11 +25,12 @@ interface GroupShortcutProps {
   timeLimit?: number;
 }
 
+const shortcutSequence = ['ctrl', 'g'];
+
 const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [objects, setObjects] = useState<Object[]>([]);
   const [selectionMode, setSelectionMode] = useState<boolean>(true);
   const [grouped, setGrouped] = useState<boolean>(false);
-  const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [completionTime, setCompletionTime] = useState<number | null>(null);
@@ -37,6 +39,9 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
+  // Sequential shortcut logic
+  const seq = useSequentialShortcut(shortcutSequence, 1500);
 
   // Initialize objects on mount
   useEffect(() => {
@@ -79,10 +84,6 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
     }
   }, [timeLeft, completed, onTimeout, isRandomMode]);
 
-  const normalizeKey = (key: string): string => {
-    return key.toLowerCase();
-  };
-
   // Handle object selection
   const handleObjectClick = (objectId: number) => {
     if (completed || grouped) return;
@@ -94,17 +95,19 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
     ));
   };
 
-  // Key handling for grouping
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
+  // Listen for keydown events
+  useEffect(() => {
+    if (completed || grouped) return;
+    const handler = (e: KeyboardEvent) => {
+      seq.handleKey(e);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [seq, completed, grouped]);
 
-    const normalizedKey = normalizeKey(e.key);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-
-    setPressedKeys(prev => (prev.includes(mappedKey) ? prev : [...prev, mappedKey]));
-
-    const ctrl = isMac ? e.metaKey : e.ctrlKey;
-    if (!done.current && ctrl && normalizedKey === 'g') {
+  // On successful completion
+  useEffect(() => {
+    if (seq.completed && !done.current) {
       const selectedObjects = objects.filter(obj => obj.selected);
       
       if (selectedObjects.length >= 2) {
@@ -130,26 +133,18 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
       } else {
         setInstructions('Select at least 2 objects before grouping!');
         setTimeout(() => setInstructions('Click to select objects, then press Ctrl+G to group'), 2000);
+        seq.reset();
       }
     }
-    e.preventDefault();
-  }, [completed, startTime, isMac, onComplete, isRandomMode, objects]);
+  }, [seq.completed, onComplete, isRandomMode, startTime, objects, seq]);
 
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalizedKey = normalizeKey(e.key);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-    setPressedKeys(prev => prev.filter(k => k !== mappedKey));
-  }, [completed]);
-
+  // Reset shake after error
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [handleKeyDown, handleKeyUp]);
+    if (seq.error) {
+      const t = setTimeout(() => seq.reset(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [seq.error, seq]);
 
   // Show congratulations when done
   if (completed && !isRandomMode) {
@@ -177,6 +172,14 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
   }
 
   const selectedCount = objects.filter(obj => obj.selected).length;
+
+  // Chip progress UI
+  const getChipClass = (idx: number) => {
+    if (seq.error) return 'bg-red-200 text-red-800 border-red-400 animate-shake';
+    if (idx < seq.progress) return 'bg-green-600 text-white border-green-700';
+    if (idx === seq.progress) return 'bg-blue-900 text-white border-blue-900';
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  };
 
   // Default challenge UI
   return (
@@ -247,17 +250,34 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
           Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">{isMac ? '⌘ + G' : 'Ctrl + G'}</span> to group
         </p>
         
+        {/* Chip progress indicator */}
         <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {pressedKeys.map((k, idx) => (
+          {shortcutSequence.map((k, idx) => (
             <span
               key={idx}
-              className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200"
+              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
             >
-              {k === 'cmd' ? '⌘' : k === 'ctrl' ? 'Ctrl' : k.toUpperCase()}
+              {k === 'ctrl' ? (isMac ? '⌘' : 'Ctrl') : k.toUpperCase()}
             </span>
           ))}
         </div>
+        {seq.error && (
+          <div className="text-center mt-2">
+            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
+          </div>
+        )}
       </div>
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 };
