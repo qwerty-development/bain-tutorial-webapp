@@ -151,9 +151,9 @@ const ShortcutMenu: React.FC<MenuProps> = ({ onSelect, onRandom, os }) => {
                 <label className="block text-sm font-medium text-brand-blue mb-2">Difficulty</label>
                 <div className="flex justify-between gap-2">
                   {[
-                    {id:'easy',label:'Easy'},
-                    {id:'normal',label:'Not Bad'},
-                    {id:'hard',label:'Bain Consultant'}
+                    {id:'easy',label:'Beginner'},
+                    {id:'normal',label:'Intermediate'},
+                    {id:'hard',label:'Advanced'}
                   ].map(({id,label})=> (
                     <button key={id} onClick={()=>setDifficulty(id as any)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold ${difficulty===id?'bg-brand-blue text-white':'bg-gray-200 text-brand-blue'}`}>{label}</button>
                   ))}
