@@ -183,7 +183,7 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
 
   // Default challenge UI
   return (
-    <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8 relative">
       {/* Big Background Timer */}
       {isRandomMode && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -195,19 +195,19 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
         </div>
       )}
 
-      <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-blue-900 z-10 relative">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-blue-900">
+      <div className="p-8 bg-white rounded-3xl shadow-2xl border-l-4 border-blue-900 z-10 relative max-w-2xl w-full">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-3xl font-bold text-blue-900">
             Group Objects
           </h2>
           {isRandomMode && (
-            <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
+            <div className={`text-3xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
               {timeLeft}s
             </div>
           )}
         </div>
         
-        <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200 overflow-hidden">
+        <div className="relative w-96 h-96 mx-auto bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl mb-6 border-2 border-gray-200 shadow-inner overflow-hidden">
           {objects.map((obj) => {
             const target = grouped && obj.grouped 
               ? { x: 100, y: 100 } 
@@ -216,12 +216,12 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
             return (
               <motion.div
                 key={obj.id}
-                className={`absolute w-12 h-12 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm cursor-pointer transition-all duration-200 ${
+                className={`absolute w-14 h-14 rounded-xl shadow-lg flex items-center justify-center text-white font-bold text-lg cursor-pointer transition-all duration-200 border-2 border-white ${
                   obj.selected 
-                    ? 'bg-green-600 ring-4 ring-green-300 scale-110' 
+                    ? 'bg-gradient-to-br from-green-500 to-green-700 ring-4 ring-green-300 scale-110' 
                     : obj.grouped 
-                      ? 'bg-blue-600' 
-                      : 'bg-blue-900 hover:bg-blue-800'
+                      ? 'bg-gradient-to-br from-red-500 to-red-700' 
+                      : 'bg-gradient-to-br from-red-500 to-red-700 hover:from-red-600 hover:to-red-800'
                 }`}
                 initial={{ x: obj.position.x, y: obj.position.y }}
                 animate={{ x: target.x, y: target.y }}
@@ -229,41 +229,44 @@ const GroupShortcut: React.FC<GroupShortcutProps> = ({ onComplete, onTimeout, is
                 onClick={() => handleObjectClick(obj.id)}
                 style={{ zIndex: obj.selected ? 10 : 1 }}
               >
-                {obj.selected && <MousePointer className="w-4 h-4" />}
+                {obj.selected && <MousePointer className="w-5 h-5" />}
               </motion.div>
             );
           })}
         </div>
         
-        <div className="text-center mb-4">
-          <p className="text-sm text-gray-600 mb-2">
+        <div className="text-center mb-6">
+          <p className="text-lg text-gray-600 mb-3">
             {instructions}
           </p>
           {selectedCount > 0 && (
-            <p className="text-sm font-medium text-green-600">
+            <p className="text-lg font-medium text-green-600">
               {selectedCount} object{selectedCount !== 1 ? 's' : ''} selected
             </p>
           )}
         </div>
         
-        <p className="mt-4 text-center text-gray-600">
-          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">{isMac ? '⌘ + G' : 'Ctrl + G'}</span> to group
-        </p>
+        {/* Only show instruction in practice mode */}
+        {!isRandomMode && (
+          <p className="mt-6 text-center text-gray-600 text-lg">
+            Press <span className="font-mono bg-blue-100 px-3 py-2 rounded-lg text-lg">{isMac ? '⌘ + G' : 'Ctrl + G'}</span> to group
+          </p>
+        )}
         
-        {/* Chip progress indicator */}
-        <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {shortcutSequence.map((k, idx) => (
+        {/* Show pressed keys but no guidance */}
+        <div className="flex flex-wrap justify-center gap-3 mt-6">
+          {seq.pressedKeys.map((k, idx) => (
             <span
               key={idx}
-              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
+              className="px-4 py-2 rounded-xl text-base font-mono border-2 bg-green-100 text-green-800 border-green-300"
             >
               {k === 'ctrl' ? (isMac ? '⌘' : 'Ctrl') : k.toUpperCase()}
             </span>
           ))}
         </div>
         {seq.error && (
-          <div className="text-center mt-2">
-            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
+          <div className="text-center mt-3">
+            <span className="text-red-600 font-semibold text-lg">Wrong key! Sequence reset.</span>
           </div>
         )}
       </div>

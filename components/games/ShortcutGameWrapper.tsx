@@ -37,7 +37,7 @@ const shuffle = <T,>(arr: T[]): T[] => {
 
 const ShortcutGameWrapper: React.FC<ShortcutGameWrapperProps> = ({ command, isRandomMode, testConfig, os, onBack }) => {
   const allCommands: GameCommand[] = ['group', 'duplicate', 'alignTop', 'alignTopFirst', 'distributeHorizontally', 'swapPositions', 'groupSimilar'];
-  const difficultyTime: Record<'easy' | 'normal' | 'hard', number> = { easy: 8, normal: 5, hard: 3 };
+  const difficultyTime: Record<'easy' | 'normal' | 'hard', number> = { easy: 15, normal: 10, hard: 5 };
   const timeLimit = difficultyTime[testConfig.difficulty];
   const [randomCommands, setRandomCommands] = useState<GameCommand[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
