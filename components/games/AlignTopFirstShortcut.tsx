@@ -1,62 +1,52 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
+import { useSequentialShortcut } from '@/utils/shortcut';
 
-interface Position {
-  x: number;
-  y: number;
+interface Position { 
+  x: number; 
+  y: number; 
 }
 
-interface AlignTopFirstShortcutProps {
+interface AlignTopFirstShortcutProps { 
   onComplete?: () => void;
   onTimeout?: () => void;
   isRandomMode?: boolean;
   timeLimit?: number;
 }
 
-// Mac special char mapping
-const macKeyMap: Record<string, string> = {
-  '≈': 'x',
-  'å': 'a',
-  '†': 't',
-  '∂': 'd',
-  '˙': 'h',
-  'π': 'p',
-  'ß': 's',
-  '∑': 'w',
-  '∫': 'b',
-  '©': 'g',
-};
+const shortcutSequence = ['alt', 'p', 'a', 't'];
 
 const AlignTopFirstShortcut: React.FC<AlignTopFirstShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [positions, setPositions] = useState<Position[]>([]);
-  const [aligned, setAligned] = useState(false);
-  const [pressedKeys, setPressedKeys] = useState<string[]>([]);
+  const [aligned, setAligned] = useState<boolean>(false);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [completionTime, setCompletionTime] = useState(0);
+  const [completionTime, setCompletionTime] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(isRandomMode ? timeLimit : 0);
-  const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // init positions
+  // Sequential shortcut logic
+  const seq = useSequentialShortcut(shortcutSequence, 1500);
+
+  // Initialize scattered positions and start timer immediately
   useEffect(() => {
-    const initial: Position[] = [
-      { x: 100, y: 20 }, // first reference box top
-      { x: 40, y: 150 },
-      { x: 160, y: 190 },
-      { x: 80, y: 120 },
-    ];
+    const initial = Array.from({ length: 4 }, () => ({
+      x: Math.random() * 180 + 20,
+      y: Math.random() * 180 + 40,
+    }));
     setPositions(initial);
     setStartTime(Date.now());
   }, []);
 
-  // timer
+  // Timer countdown - only in random mode
   useEffect(() => {
     if (!isRandomMode) return;
     timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
+      setTimeLeft(prev => {
         if (prev <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
           return 0;
@@ -69,7 +59,7 @@ const AlignTopFirstShortcut: React.FC<AlignTopFirstShortcutProps> = ({ onComplet
     };
   }, [isRandomMode, timeLimit]);
 
-  // timeout
+  // Handle timeout separately
   useEffect(() => {
     if (!isRandomMode) return;
     if (timeLeft === 0 && !completed) {
@@ -77,70 +67,56 @@ const AlignTopFirstShortcut: React.FC<AlignTopFirstShortcutProps> = ({ onComplet
     }
   }, [timeLeft, completed, onTimeout, isRandomMode]);
 
-  const normalizeKey = (key: string, altPressed: boolean): string => {
-    if (altPressed && /^[a-zA-Z]$/.test(key)) {
-      return key.toLowerCase();
-    }
-    if (macKeyMap[key]) return macKeyMap[key];
-    return key.toLowerCase();
-  };
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalized = normalizeKey(e.key, e.altKey);
-    const mapped = normalized === 'meta' ? 'cmd' : normalized;
-    setPressedKeys((prev) => (prev.includes(mapped) ? prev : [...prev, mapped]));
-
-    // sequence alt + p + a + t
-    if (e.altKey && normalized === 'p') {
-      setSequence(['p']);
-    } else if (e.altKey && sequence.length === 1 && sequence[0] === 'p' && normalized === 'a') {
-      setSequence(['p', 'a']);
-    } else if (e.altKey && sequence.length === 2 && sequence[1] === 'a' && normalized === 't') {
-      if (!done.current) {
-        done.current = true;
-        setAligned(true);
-        const end = Date.now();
-        setCompletionTime(end - (startTime || end));
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (isRandomMode) {
-          setTimeout(() => onComplete?.(), 800);
-        } else {
-          setTimeout(() => setCompleted(true), 800);
-        }
-      }
-    } else if (!e.altKey) {
-      setSequence([]);
-    }
-    e.preventDefault();
-  }, [completed, sequence, startTime, isRandomMode, onComplete]);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalized = normalizeKey(e.key, e.altKey);
-    const mapped = normalized === 'meta' ? 'cmd' : normalized;
-    setPressedKeys((prev) => prev.filter((k) => k !== mapped));
-  }, [completed]);
-
+  // Listen for keydown events
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+    if (completed || aligned) return;
+    const handler = (e: KeyboardEvent) => {
+      seq.handleKey(e);
     };
-  }, [handleKeyDown, handleKeyUp]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [seq, completed, aligned]);
+
+  // On successful completion
+  useEffect(() => {
+    if (seq.completed && !done.current) {
+      done.current = true;
+      setAligned(true);
+      const end = Date.now();
+      setCompletionTime(end - (startTime || end));
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isRandomMode) {
+        setTimeout(() => onComplete?.(), 1000);
+      } else {
+        setTimeout(() => setCompleted(true), 1000);
+      }
+    }
+  }, [seq.completed, onComplete, isRandomMode, startTime]);
+
+  // Reset shake after error
+  useEffect(() => {
+    if (seq.error) {
+      const t = setTimeout(() => seq.reset(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [seq.error, seq]);
 
   if (completed && !isRandomMode) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
         <div className="bg-white rounded-xl p-6 shadow-lg text-center border-l-4 border-blue-900 z-10">
           <CheckCircle className="w-12 h-12 mx-auto text-blue-900 mb-4" />
-          <h2 className="text-2xl font-bold text-blue-900 mb-2">Aligned! 🎉</h2>
-          <p className="text-gray-600 font-mono mb-4">Completed in {(completionTime / 1000).toFixed(2)}s</p>
+          <h2 className="text-2xl font-bold text-blue-900 mb-2">
+            Excellent! 🎯
+          </h2>
+          {!isRandomMode && (
+            <p className="text-gray-600 font-mono mb-4">
+              Completed in {(completionTime / 1000).toFixed(2)}s
+            </p>
+          )}
           <button
             onClick={() => onComplete?.()}
-            className="px-6 py-2 bg-brand-blue hover:bg-brand-blue/90 text-white rounded-lg transition-colors"
+            className="px-6 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-lg transition-colors"
           >
             Continue
           </button>
@@ -149,57 +125,89 @@ const AlignTopFirstShortcut: React.FC<AlignTopFirstShortcutProps> = ({ onComplet
     );
   }
 
+  // Chip progress UI
+  const getChipClass = (idx: number) => {
+    if (seq.error) return 'bg-red-200 text-red-800 border-red-400 animate-shake';
+    if (idx < seq.progress) return 'bg-green-600 text-white border-green-700';
+    if (idx === seq.progress) return 'bg-blue-900 text-white border-blue-900';
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
+      {/* Big Background Timer */}
       {isRandomMode && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className={`text-[20rem] font-bold opacity-10 transition-all duration-300 ${timeLeft <= 2 ? 'text-red-500 animate-pulse' : 'text-blue-900'}`}>{timeLeft}</div>
+          <div className={`text-[20rem] font-bold opacity-10 transition-all duration-300 ${
+            timeLeft <= 2 ? 'text-red-500 animate-pulse' : 'text-blue-900'
+          }`}>
+            {timeLeft}
+          </div>
         </div>
       )}
 
       <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-blue-900 z-10 relative">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-blue-900">Align Top to First</h2>
+          <h2 className="text-2xl font-bold text-blue-900">
+            Align Top to First
+          </h2>
           {isRandomMode && (
-            <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>{timeLeft}s</div>
+            <div className={`text-2xl font-bold ${timeLeft <= 2 ? 'text-red-500' : 'text-blue-900'}`}>
+              {timeLeft}s
+            </div>
           )}
         </div>
-
+        
         <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-900 opacity-30"></div>
           {positions.map((pos, i) => {
-            const targetY = aligned ? positions[0].y : pos.y;
+            const target = aligned ? { x: pos.x, y: 20 } : { x: pos.x, y: pos.y };
             return (
               <motion.div
                 key={i}
                 className="absolute w-10 h-10 bg-blue-900 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm"
                 initial={{ x: pos.x, y: pos.y }}
-                animate={{ x: pos.x, y: targetY }}
+                animate={{ x: target.x, y: target.y }}
                 transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               >
                 {i + 1}
               </motion.div>
             );
           })}
-          {/* guide line */}
-          <motion.div
-            className="absolute left-0 right-0 h-0.5 bg-blue-300 opacity-50"
-            initial={{ y: positions[0]?.y || 20, opacity: 0 }}
-            animate={{ y: aligned ? (positions[0]?.y || 20) : positions[0]?.y || 20, opacity: aligned ? 1 : 0.3 }}
-          />
         </div>
-
+        
         <p className="mt-4 text-center text-gray-600">
-          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + P + A + T</span> to align top to first
+          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + P + A + T</span> to align to top
         </p>
-
+        
+        {/* Chip progress indicator */}
         <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {pressedKeys.map((k, idx) => (
-            <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200">
+          {shortcutSequence.map((k, idx) => (
+            <span
+              key={idx}
+              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
+            >
               {k === 'alt' ? 'Alt' : k.toUpperCase()}
             </span>
           ))}
         </div>
+        {seq.error && (
+          <div className="text-center mt-2">
+            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
+          </div>
+        )}
       </div>
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 };

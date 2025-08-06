@@ -1,9 +1,10 @@
 // File: src/components/games/SwapPositionsShortcut.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowLeftRight } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
+import { useSequentialShortcut } from '@/utils/shortcut';
 
 interface Position { 
   x: number; 
@@ -17,41 +18,28 @@ interface SwapPositionsShortcutProps {
   timeLimit?: number;
 }
 
-// Key mapping for Mac special characters
-const macKeyMap: Record<string, string> = {
-  '≈': 'x',  // Alt + X
-  'å': 'a',  // Alt + A  
-  '†': 't',  // Alt + T
-  '∂': 'd',  // Alt + D
-  '˙': 'h',  // Alt + H
-  'π': 'p',  // Alt + P
-  'ß': 's',  // Alt + S
-  '∑': 'w',  // Alt + W
-  '∫': 'b',  // Alt + B
-  '©': 'g',  // Alt + G
-};
+const shortcutSequence = ['alt', 'p', 's', 'w'];
 
 const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [swapped, setSwapped] = useState<boolean>(false);
-  const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [completionTime, setCompletionTime] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(isRandomMode ? timeLimit : 0);
-  const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize two distinct positions and start timer immediately
+  // Sequential shortcut logic
+  const seq = useSequentialShortcut(shortcutSequence, 1500);
+
+  // Initialize scattered positions and start timer immediately
   useEffect(() => {
     const initial = [
-      { x: 60, y: 100 },   // Left position - Circle
-      { x: 160, y: 100 },  // Right position - Square
+      { x: 50, y: 100 },
+      { x: 150, y: 100 },
     ];
     setPositions(initial);
-    
-    // Start timer immediately
     setStartTime(Date.now());
   }, []);
 
@@ -67,7 +55,6 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
         return prev - 1;
       });
     }, 1000);
-
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -81,72 +68,39 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
     }
   }, [timeLeft, completed, onTimeout, isRandomMode]);
 
-  const normalizeKey = (key: string, altPressed: boolean): string => {
-    // If Alt is pressed and we get a regular letter, use it directly
-    if (altPressed && /^[a-zA-Z]$/.test(key)) {
-      return key.toLowerCase();
-    }
-    // Otherwise check for Mac special characters
-    if (macKeyMap[key]) {
-      return macKeyMap[key];
-    }
-    return key.toLowerCase();
-  };
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-
-    setPressedKeys(prev => prev.includes(mappedKey) ? prev : [...prev, mappedKey]);
-
-    // Debug logging
-    console.log('Key pressed:', e.key, 'Normalized:', normalizedKey, 'Alt pressed:', e.altKey, 'Sequence:', sequence);
-
-    // Track sequence for Alt + P + S + W
-    if (e.altKey && normalizedKey === 'p') {
-      setSequence(['p']);
-      console.log('Started sequence with P');
-    } else if (e.altKey && sequence.length === 1 && sequence[0] === 'p' && normalizedKey === 's') {
-      setSequence(['p', 's']);
-      console.log('Added S to sequence');
-    } else if (e.altKey && sequence.length === 2 && sequence[1] === 's' && normalizedKey === 'w') {
-      console.log('Completed sequence with W');
-      if (!done.current) {
-        done.current = true;
-        setSwapped(true);
-        const end = Date.now();
-        setCompletionTime(end - (startTime || end));
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (isRandomMode) {
-          setTimeout(() => onComplete?.(), 800);
-        } else {
-          setTimeout(() => setCompleted(true), 800);
-        }
-      }
-    } else if (!e.altKey) {
-      setSequence([]);
-    }
-    
-    e.preventDefault();
-  }, [completed, startTime, sequence, onComplete, isRandomMode]);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-    setPressedKeys(prev => prev.filter(k => k !== mappedKey));
-  }, [completed]);
-
+  // Listen for keydown events
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+    if (completed || swapped) return;
+    const handler = (e: KeyboardEvent) => {
+      seq.handleKey(e);
     };
-  }, [handleKeyDown, handleKeyUp]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [seq, completed, swapped]);
+
+  // On successful completion
+  useEffect(() => {
+    if (seq.completed && !done.current) {
+      done.current = true;
+      setSwapped(true);
+      const end = Date.now();
+      setCompletionTime(end - (startTime || end));
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isRandomMode) {
+        setTimeout(() => onComplete?.(), 1000);
+      } else {
+        setTimeout(() => setCompleted(true), 1000);
+      }
+    }
+  }, [seq.completed, onComplete, isRandomMode, startTime]);
+
+  // Reset shake after error
+  useEffect(() => {
+    if (seq.error) {
+      const t = setTimeout(() => seq.reset(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [seq.error, seq]);
 
   if (completed && !isRandomMode) {
     return (
@@ -154,7 +108,7 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
         <div className="bg-white rounded-xl p-6 shadow-lg text-center border-l-4 border-blue-900 z-10">
           <CheckCircle className="w-12 h-12 mx-auto text-blue-900 mb-4" />
           <h2 className="text-2xl font-bold text-blue-900 mb-2">
-            Smooth Swap! 🔄
+            Excellent! 🎯
           </h2>
           {!isRandomMode && (
             <p className="text-gray-600 font-mono mb-4">
@@ -172,10 +126,13 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
     );
   }
 
-  const swappedPositions = [
-    { x: 160, y: 100 }, // Circle moves right
-    { x: 60, y: 100 },  // Square moves left
-  ];
+  // Chip progress UI
+  const getChipClass = (idx: number) => {
+    if (seq.error) return 'bg-red-200 text-red-800 border-red-400 animate-shake';
+    if (idx < seq.progress) return 'bg-green-600 text-white border-green-700';
+    if (idx === seq.progress) return 'bg-blue-900 text-white border-blue-900';
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
@@ -203,61 +160,56 @@ const SwapPositionsShortcut: React.FC<SwapPositionsShortcutProps> = ({ onComplet
         </div>
         
         <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200">
-          {/* Swap arrow indicator */}
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
-            <ArrowLeftRight className="w-6 h-6 text-blue-300" />
-          </div>
-          
-          {/* Circle */}
-          <motion.div
-            className="absolute w-12 h-12 bg-blue-900 rounded-full shadow-lg flex items-center justify-center text-white font-bold text-sm border-2 border-white"
-            initial={{ x: positions[0]?.x || 60, y: positions[0]?.y || 100 }}
-            animate={{ 
-              x: swapped ? swappedPositions[0].x : (positions[0]?.x || 60), 
-              y: swapped ? swappedPositions[0].y : (positions[0]?.y || 100) 
-            }}
-            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          >
-            ●
-          </motion.div>
-          
-          {/* Square */}
-          <motion.div
-            className="absolute w-12 h-12 bg-white border-4 border-blue-900 shadow-lg flex items-center justify-center text-blue-900 font-bold text-sm"
-            initial={{ x: positions[1]?.x || 160, y: positions[1]?.y || 100 }}
-            animate={{ 
-              x: swapped ? swappedPositions[1].x : (positions[1]?.x || 160), 
-              y: swapped ? swappedPositions[1].y : (positions[1]?.y || 100) 
-            }}
-            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          >
-            ■
-          </motion.div>
+          {positions.map((pos, i) => {
+            const target = swapped 
+              ? { x: positions[1 - i].x, y: positions[1 - i].y } 
+              : { x: pos.x, y: pos.y };
+            return (
+              <motion.div
+                key={i}
+                className="absolute w-12 h-12 bg-blue-900 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm"
+                initial={{ x: pos.x, y: pos.y }}
+                animate={{ x: target.x, y: target.y }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              >
+                {i + 1}
+              </motion.div>
+            );
+          })}
         </div>
         
         <p className="mt-4 text-center text-gray-600">
           Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + P + S + W</span> to swap positions
         </p>
         
+        {/* Chip progress indicator */}
         <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {pressedKeys.map((k, idx) => (
+          {shortcutSequence.map((k, idx) => (
             <span
               key={idx}
-              className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200"
+              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
             >
               {k === 'alt' ? 'Alt' : k.toUpperCase()}
             </span>
           ))}
         </div>
-        
-        {sequence.length > 0 && (
-          <div className="mt-2 text-center">
-            <span className="text-sm text-blue-600">
-              Sequence: {sequence.join(' → ')} {sequence.length < 3 && '→ ?'}
-            </span>
+        {seq.error && (
+          <div className="text-center mt-2">
+            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 };

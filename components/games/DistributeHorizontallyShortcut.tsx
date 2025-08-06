@@ -1,9 +1,10 @@
 // File: src/components/games/DistributeHorizontallyShortcut.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
+import { useSequentialShortcut } from '@/utils/shortcut';
 
 interface Position { 
   x: number; 
@@ -17,44 +18,28 @@ interface DistributeHorizontallyShortcutProps {
   timeLimit?: number;
 }
 
-// Key mapping for Mac special characters
-const macKeyMap: Record<string, string> = {
-  '≈': 'x',  // Alt + X
-  'å': 'a',  // Alt + A  
-  '†': 't',  // Alt + T
-  '∂': 'd',  // Alt + D
-  '˙': 'h',  // Alt + H
-  'π': 'p',  // Alt + P
-  'ß': 's',  // Alt + S
-  '∑': 'w',  // Alt + W
-  '∫': 'b',  // Alt + B
-  '©': 'g',  // Alt + G
-};
+const shortcutSequence = ['alt', 'x', 'd', 'h'];
 
 const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [distributed, setDistributed] = useState<boolean>(false);
-  const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [completionTime, setCompletionTime] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(isRandomMode ? timeLimit : 0);
-  const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize clustered positions and start timer immediately
+  // Sequential shortcut logic
+  const seq = useSequentialShortcut(shortcutSequence, 1500);
+
+  // Initialize scattered positions and start timer immediately
   useEffect(() => {
-    const baseY = 120;
-    const initial = [
-      { x: 30, y: baseY },
-      { x: 50, y: baseY - 10 },
-      { x: 70, y: baseY + 15 },
-      { x: 200, y: baseY - 5 },
-    ];
+    const initial = Array.from({ length: 4 }, () => ({
+      x: Math.random() * 180 + 20,
+      y: Math.random() * 180 + 40,
+    }));
     setPositions(initial);
-    
-    // Start timer immediately
     setStartTime(Date.now());
   }, []);
 
@@ -70,7 +55,6 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
         return prev - 1;
       });
     }, 1000);
-
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -84,72 +68,39 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
     }
   }, [timeLeft, completed, onTimeout, isRandomMode]);
 
-  const normalizeKey = (key: string, altPressed: boolean): string => {
-    // If Alt is pressed and we get a regular letter, use it directly
-    if (altPressed && /^[a-zA-Z]$/.test(key)) {
-      return key.toLowerCase();
-    }
-    // Otherwise check for Mac special characters
-    if (macKeyMap[key]) {
-      return macKeyMap[key];
-    }
-    return key.toLowerCase();
-  };
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-
-    setPressedKeys(prev => prev.includes(mappedKey) ? prev : [...prev, mappedKey]);
-
-    // Debug logging
-    console.log('Key pressed:', e.key, 'Normalized:', normalizedKey, 'Alt pressed:', e.altKey, 'Sequence:', sequence);
-
-    // Track sequence for Alt + X + D + H
-    if (e.altKey && normalizedKey === 'x') {
-      setSequence(['x']);
-      console.log('Started sequence with X');
-    } else if (e.altKey && sequence.length === 1 && sequence[0] === 'x' && normalizedKey === 'd') {
-      setSequence(['x', 'd']);
-      console.log('Added D to sequence');
-    } else if (e.altKey && sequence.length === 2 && sequence[1] === 'd' && normalizedKey === 'h') {
-      console.log('Completed sequence with H');
-      if (!done.current) {
-        done.current = true;
-        setDistributed(true);
-        const end = Date.now();
-        setCompletionTime(end - (startTime || end));
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (isRandomMode) {
-          setTimeout(() => onComplete?.(), 800);
-        } else {
-          setTimeout(() => setCompleted(true), 800);
-        }
-      }
-    } else if (!e.altKey) {
-      setSequence([]);
-    }
-    
-    e.preventDefault();
-  }, [completed, startTime, sequence, onComplete, isRandomMode]);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-    setPressedKeys(prev => prev.filter(k => k !== mappedKey));
-  }, [completed]);
-
+  // Listen for keydown events
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+    if (completed || distributed) return;
+    const handler = (e: KeyboardEvent) => {
+      seq.handleKey(e);
     };
-  }, [handleKeyDown, handleKeyUp]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [seq, completed, distributed]);
+
+  // On successful completion
+  useEffect(() => {
+    if (seq.completed && !done.current) {
+      done.current = true;
+      setDistributed(true);
+      const end = Date.now();
+      setCompletionTime(end - (startTime || end));
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isRandomMode) {
+        setTimeout(() => onComplete?.(), 1000);
+      } else {
+        setTimeout(() => setCompleted(true), 1000);
+      }
+    }
+  }, [seq.completed, onComplete, isRandomMode, startTime]);
+
+  // Reset shake after error
+  useEffect(() => {
+    if (seq.error) {
+      const t = setTimeout(() => seq.reset(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [seq.error, seq]);
 
   if (completed && !isRandomMode) {
     return (
@@ -157,7 +108,7 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
         <div className="bg-white rounded-xl p-6 shadow-lg text-center border-l-4 border-blue-900 z-10">
           <CheckCircle className="w-12 h-12 mx-auto text-blue-900 mb-4" />
           <h2 className="text-2xl font-bold text-blue-900 mb-2">
-            Perfect Distribution! 📐
+            Excellent! 🎯
           </h2>
           {!isRandomMode && (
             <p className="text-gray-600 font-mono mb-4">
@@ -174,6 +125,14 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
       </div>
     );
   }
+
+  // Chip progress UI
+  const getChipClass = (idx: number) => {
+    if (seq.error) return 'bg-red-200 text-red-800 border-red-400 animate-shake';
+    if (idx < seq.progress) return 'bg-green-600 text-white border-green-700';
+    if (idx === seq.progress) return 'bg-blue-900 text-white border-blue-900';
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
@@ -201,32 +160,17 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
         </div>
         
         <div className="relative w-64 h-64 mx-auto bg-gray-100 rounded-xl mb-4 border-2 border-gray-200">
-          {/* Guide lines */}
-          {distributed && (
-            <>
-              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
-              <div className="absolute left-20 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
-              <div className="absolute left-32 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
-              <div className="absolute right-8 top-0 bottom-0 w-0.5 bg-blue-300 opacity-50"></div>
-            </>
-          )}
-          
           {positions.map((pos, i) => {
-            const distributedPositions = [
-              { x: 20, y: 120 },
-              { x: 75, y: 120 },
-              { x: 130, y: 120 },
-              { x: 185, y: 120 }
-            ];
-            const target = distributed ? distributedPositions[i] : { x: pos.x, y: pos.y };
-            
+            const target = distributed 
+              ? { x: 30 + (i * 50), y: 100 } 
+              : { x: pos.x, y: pos.y };
             return (
               <motion.div
                 key={i}
                 className="absolute w-10 h-10 bg-blue-900 rounded-lg shadow-lg flex items-center justify-center text-white font-bold text-sm"
                 initial={{ x: pos.x, y: pos.y }}
                 animate={{ x: target.x, y: target.y }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25, delay: i * 0.1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               >
                 {i + 1}
               </motion.div>
@@ -235,28 +179,37 @@ const DistributeHorizontallyShortcut: React.FC<DistributeHorizontallyShortcutPro
         </div>
         
         <p className="mt-4 text-center text-gray-600">
-          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + X + D + H</span> to distribute evenly
+          Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + X + D + H</span> to distribute horizontally
         </p>
         
+        {/* Chip progress indicator */}
         <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {pressedKeys.map((k, idx) => (
+          {shortcutSequence.map((k, idx) => (
             <span
               key={idx}
-              className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200"
+              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
             >
               {k === 'alt' ? 'Alt' : k.toUpperCase()}
             </span>
           ))}
         </div>
-        
-        {sequence.length > 0 && (
-          <div className="mt-2 text-center">
-            <span className="text-sm text-blue-600">
-              Sequence: {sequence.join(' → ')} {sequence.length < 3 && '→ ?'}
-            </span>
+        {seq.error && (
+          <div className="text-center mt-2">
+            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 };

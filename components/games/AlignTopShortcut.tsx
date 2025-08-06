@@ -1,9 +1,10 @@
 // File: src/components/games/AlignTopShortcut.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
+import { useSequentialShortcut } from '@/utils/shortcut';
 
 interface Position { 
   x: number; 
@@ -17,31 +18,20 @@ interface AlignTopShortcutProps {
   timeLimit?: number;
 }
 
-// Key mapping for Mac special characters
-const macKeyMap: Record<string, string> = {
-  '≈': 'x',  // Alt + X
-  'å': 'a',  // Alt + A  
-  '†': 't',  // Alt + T
-  '∂': 'd',  // Alt + D
-  '˙': 'h',  // Alt + H
-  'π': 'p',  // Alt + P
-  'ß': 's',  // Alt + S
-  '∑': 'w',  // Alt + W
-  '∫': 'b',  // Alt + B
-  '©': 'g',  // Alt + G
-};
+const shortcutSequence = ['alt', 'x', 'a', 't'];
 
 const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeout, isRandomMode = false, timeLimit = 5 }) => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [aligned, setAligned] = useState<boolean>(false);
-  const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [completionTime, setCompletionTime] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(isRandomMode ? timeLimit : 0);
-  const [sequence, setSequence] = useState<string[]>([]);
   const done = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sequential shortcut logic
+  const seq = useSequentialShortcut(shortcutSequence, 1500);
 
   // Initialize scattered positions and start timer immediately
   useEffect(() => {
@@ -50,8 +40,6 @@ const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeo
       y: Math.random() * 180 + 40,
     }));
     setPositions(initial);
-    
-    // Start timer immediately
     setStartTime(Date.now());
   }, []);
 
@@ -67,7 +55,6 @@ const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeo
         return prev - 1;
       });
     }, 1000);
-
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -81,72 +68,39 @@ const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeo
     }
   }, [timeLeft, completed, onTimeout, isRandomMode]);
 
-  const normalizeKey = (key: string, altPressed: boolean): string => {
-    // If Alt is pressed and we get a regular letter, use it directly
-    if (altPressed && /^[a-zA-Z]$/.test(key)) {
-      return key.toLowerCase();
-    }
-    // Otherwise check for Mac special characters
-    if (macKeyMap[key]) {
-      return macKeyMap[key];
-    }
-    return key.toLowerCase();
-  };
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-
-    setPressedKeys(prev => prev.includes(mappedKey) ? prev : [...prev, mappedKey]);
-
-    // Debug logging
-    console.log('Key pressed:', e.key, 'Normalized:', normalizedKey, 'Alt pressed:', e.altKey, 'Sequence:', sequence);
-
-    // Track sequence for Alt + X + A + T
-    if (e.altKey && normalizedKey === 'x') {
-      setSequence(['x']);
-      console.log('Started sequence with X');
-    } else if (e.altKey && sequence.length === 1 && sequence[0] === 'x' && normalizedKey === 'a') {
-      setSequence(['x', 'a']);
-      console.log('Added A to sequence');
-    } else if (e.altKey && sequence.length === 2 && sequence[1] === 'a' && normalizedKey === 't') {
-      console.log('Completed sequence with T');
-      if (!done.current) {
-        done.current = true;
-        setAligned(true);
-        const end = Date.now();
-        setCompletionTime(end - (startTime || end));
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (isRandomMode) {
-          setTimeout(() => onComplete?.(), 800);
-        } else {
-          setTimeout(() => setCompleted(true), 800);
-        }
-      }
-    } else if (!e.altKey) {
-      setSequence([]);
-    }
-    
-    e.preventDefault();
-  }, [completed, startTime, sequence, onComplete, isRandomMode]);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    if (completed) return;
-    const normalizedKey = normalizeKey(e.key, e.altKey);
-    const mappedKey = normalizedKey === 'meta' ? 'cmd' : normalizedKey;
-    setPressedKeys(prev => prev.filter(k => k !== mappedKey));
-  }, [completed]);
-
+  // Listen for keydown events
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+    if (completed || aligned) return;
+    const handler = (e: KeyboardEvent) => {
+      seq.handleKey(e);
     };
-  }, [handleKeyDown, handleKeyUp]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [seq, completed, aligned]);
+
+  // On successful completion
+  useEffect(() => {
+    if (seq.completed && !done.current) {
+      done.current = true;
+      setAligned(true);
+      const end = Date.now();
+      setCompletionTime(end - (startTime || end));
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isRandomMode) {
+        setTimeout(() => onComplete?.(), 1000);
+      } else {
+        setTimeout(() => setCompleted(true), 1000);
+      }
+    }
+  }, [seq.completed, onComplete, isRandomMode, startTime]);
+
+  // Reset shake after error
+  useEffect(() => {
+    if (seq.error) {
+      const t = setTimeout(() => seq.reset(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [seq.error, seq]);
 
   if (completed && !isRandomMode) {
     return (
@@ -171,6 +125,14 @@ const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeo
       </div>
     );
   }
+
+  // Chip progress UI
+  const getChipClass = (idx: number) => {
+    if (seq.error) return 'bg-red-200 text-red-800 border-red-400 animate-shake';
+    if (idx < seq.progress) return 'bg-green-600 text-white border-green-700';
+    if (idx === seq.progress) return 'bg-blue-900 text-white border-blue-900';
+    return 'bg-blue-100 text-blue-900 border-blue-200';
+  };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-white p-8 relative">
@@ -219,25 +181,34 @@ const AlignTopShortcut: React.FC<AlignTopShortcutProps> = ({ onComplete, onTimeo
           Press <span className="font-mono bg-blue-100 px-2 py-1 rounded">Alt + X + A + T</span> to align to top
         </p>
         
+        {/* Chip progress indicator */}
         <div className="flex flex-wrap justify-center gap-2 mt-4">
-          {pressedKeys.map((k, idx) => (
+          {shortcutSequence.map((k, idx) => (
             <span
               key={idx}
-              className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-sm font-mono border border-blue-200"
+              className={`px-3 py-1 rounded-full text-sm font-mono border transition-all duration-200 ${getChipClass(idx)}`}
             >
               {k === 'alt' ? 'Alt' : k.toUpperCase()}
             </span>
           ))}
         </div>
-        
-        {sequence.length > 0 && (
-          <div className="mt-2 text-center">
-            <span className="text-sm text-blue-600">
-              Sequence: {sequence.join(' → ')} {sequence.length < 3 && '→ ?'}
-            </span>
+        {seq.error && (
+          <div className="text-center mt-2">
+            <span className="text-red-600 font-semibold">Wrong key! Sequence reset.</span>
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   );
 };
