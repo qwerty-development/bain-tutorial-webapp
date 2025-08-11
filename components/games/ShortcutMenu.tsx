@@ -16,8 +16,8 @@ interface MenuProps {
 }
 
 const ShortcutMenu: React.FC<MenuProps> = ({ onSelect, onRandom, os }) => {
-  const implementedShortcuts: GameCommand[] = ['group', 'duplicate', 'alignTop', 'alignTopFirst', 'distributeHorizontally'];
-  const comingSoonShortcuts: GameCommand[] = ['swapPositions', 'groupSimilar'];
+  const implementedShortcuts: GameCommand[] = ['group', 'duplicate', 'alignTop', 'alignTopFirst', 'distributeHorizontally', 'swapPositions', 'groupSimilar'];
+  const comingSoonShortcuts: GameCommand[] = [];
   const [selectCount, setSelectCount] = useState<number>(2);
   const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
   const [showConfig, setShowConfig] = useState(false);
